@@ -306,6 +306,7 @@ const COLORS = [
   {name:"Red", hex:"#A8412A"}, {name:"Pink", hex:"#C98691"}, {name:"Purple", hex:"#77618A"},
   {name:"Burgundy", hex:"#71343B"}
 ];
+const COLOR_LABELS = new Set([...COLORS.map(color=>color.name.toLowerCase()), "grey"]);
 const CATEGORIES = ["Dress", "Shirt","Sweater","T-Shirt","Crewneck","Jeans","Trousers","Shorts","Button-Up", "Sleeveless"];
 const CATEGORY_PLURALS = {"Dress":"Dresses", "Shirt":"Shirts","Sweater":"Sweaters","T-Shirt":"T-Shirts","Crewneck":"Crewnecks","Jeans":"Jeans","Trousers":"Trousers","Shorts":"Shorts","Button-Up":"Button-Ups", "Sleeveless":"Sleeveless"};
 
@@ -322,6 +323,7 @@ let namingOutfit = false;
 
 const $ = sel => document.querySelector(sel);
 const el = (tag, cls) => { const e = document.createElement(tag); if(cls) e.className = cls; return e; };
+const isColorLabel = value => COLOR_LABELS.has(String(value).trim().toLowerCase());
 
 function showToast(msg){
   const t = $('#toast');
@@ -402,7 +404,18 @@ async function loadAll(){
 
   // categories from the old list (Top/Bottom/Dress/...) are kept on the item but
   // show up under "Needs a category" until they are re-sorted
-  items.forEach(i => { if(!i.tags) i.tags = []; });
+  let removedColorLabels = false;
+  for(const item of items){
+    const cleanTags = (item.tags || []).filter(tag=>!isColorLabel(tag));
+    if(cleanTags.length !== (item.tags || []).length){
+      item.tags = cleanTags;
+      await saveItem(item);
+      removedColorLabels = true;
+    }else if(!item.tags){
+      item.tags = [];
+    }
+  }
+  if(removedColorLabels) await saveItemsIndex();
 
   try{
     const oIdxRaw = await dbGet('outfits:index');
@@ -418,6 +431,11 @@ async function loadAll(){
     const tRaw = await dbGet('tags:index');
     tags = tRaw ? JSON.parse(tRaw) : DEFAULT_TAGS.slice();
   }catch(e){ tags = DEFAULT_TAGS.slice(); }
+  const cleanTags = tags.filter(tag=>!isColorLabel(tag));
+  if(cleanTags.length !== tags.length){
+    tags = cleanTags;
+    await saveTags();
+  }
 
   render();
 }
@@ -629,6 +647,7 @@ function renderRail(){
     const input = rail.querySelector('#newTagInput');
     const val = input.value.trim();
     if(!val) return;
+    if(isColorLabel(val)){ showToast('Choose colors in the Color section'); input.value=''; return; }
     if(!tags.includes(val)){ tags.push(val); await saveTags(); }
     input.value='';
     render();
@@ -980,6 +999,7 @@ function openBulkModal(){
     const input = modal.querySelector('#modalNewTag');
     const val = input.value.trim();
     if(!val) return;
+    if(isColorLabel(val)){ showToast('Choose colors in the Color section'); input.value=''; return; }
     if(!tags.includes(val)){ tags.push(val); await saveTags(); }
     for(const p of chosen()){
       p.tags = p.tags || [];
@@ -1105,6 +1125,7 @@ function openItemModal(id){
     const input = modal.querySelector('#modalNewTag');
     const val = input.value.trim();
     if(!val) return;
+    if(isColorLabel(val)){ showToast('Choose colors in the Color section'); input.value=''; return; }
     if(!tags.includes(val)){ tags.push(val); await saveTags(); }
     item.tags = item.tags || [];
     if(!item.tags.includes(val)){ item.tags.push(val); await saveItem(item); }
