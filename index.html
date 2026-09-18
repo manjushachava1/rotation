@@ -188,6 +188,10 @@
   .chip.cat-chip.on{background:var(--accent); border-color:var(--accent);}
   /* label applied to some, but not all, of the selected pieces */
   .chip.partial{background:var(--surface-2); border-color:var(--sage); color:var(--sage); border-style:dashed;}
+  .color-chip{display:inline-flex; align-items:center; gap:7px;}
+  .color-dot{width:16px; height:16px; border-radius:50%; border:1px solid rgba(33,28,22,0.22); flex:0 0 auto;}
+  .color-chip.on .color-dot{border-color:currentColor; box-shadow:0 0 0 2px var(--surface), 0 0 0 3px currentColor;}
+  .color-chip.partial .color-dot{border-style:dashed; border-color:var(--sage);}
 
   .bulk-thumbs{display:flex; gap:6px; overflow-x:auto; padding-bottom:6px; margin-bottom:16px;}
   .bulk-thumbs img{width:56px; height:72px; object-fit:cover; border-radius:4px; flex:0 0 auto; background:var(--surface-2);}
@@ -294,6 +298,14 @@
 
 <script>
 const DEFAULT_TAGS = ["night out","work","casual","layering","sleeveless","cropped","solid","stripes","patterned","denim"];
+const COLORS = [
+  {name:"Black", hex:"#211C16"}, {name:"White", hex:"#FBF9F3"}, {name:"Gray", hex:"#8B8985"},
+  {name:"Beige", hex:"#D8C3A5"}, {name:"Brown", hex:"#795548"}, {name:"Navy", hex:"#25344D"},
+  {name:"Blue", hex:"#4A78A8"}, {name:"Denim", hex:"#587A91"}, {name:"Green", hex:"#6E7A56"},
+  {name:"Teal", hex:"#438C87"}, {name:"Yellow", hex:"#D6A93A"}, {name:"Orange", hex:"#C87532"},
+  {name:"Red", hex:"#A8412A"}, {name:"Pink", hex:"#C98691"}, {name:"Purple", hex:"#77618A"},
+  {name:"Burgundy", hex:"#71343B"}
+];
 const CATEGORIES = ["Dress", "Shirt","Sweater","T-Shirt","Crewneck","Jeans","Trousers","Shorts","Button-Up", "Sleeveless"];
 const CATEGORY_PLURALS = {"Dress":"Dresses", "Shirt":"Shirts","Sweater":"Sweaters","T-Shirt":"T-Shirts","Crewneck":"Crewnecks","Jeans":"Jeans","Trousers":"Trousers","Shorts":"Shorts","Button-Up":"Button-Ups", "Sleeveless":"Sleeveless"};
 
@@ -868,6 +880,8 @@ function openBulkModal(){
     </div>
     <div class="field-label">Category — one tap sets it for all</div>
     <div class="chip-row" id="catRow"></div>
+    <div class="field-label">Color — one tap sets it for all</div>
+    <div class="chip-row" id="colorRow"></div>
     <div class="field-label">Labels — solid means all have it, dashed means only some</div>
     <div class="chip-row" id="chipRow"></div>
     <div class="add-tag">
@@ -907,6 +921,29 @@ function openBulkModal(){
     });
   }
 
+  function renderColorChips(){
+    const row = modal.querySelector('#colorRow');
+    row.innerHTML = '';
+    const pieces = chosen();
+    COLORS.forEach(color=>{
+      const all = pieces.length>0 && pieces.every(p=>p.color===color.name);
+      const some = pieces.some(p=>p.color===color.name);
+      const chip = el('button','chip color-chip'+(all?' on':(some?' partial':'')));
+      const dot = el('span','color-dot');
+      dot.style.backgroundColor = color.hex;
+      chip.append(dot, document.createTextNode(color.name));
+      chip.onclick = async () => {
+        for(const p of pieces){
+          p.color = all ? null : color.name;
+          await saveItem(p);
+        }
+        renderColorChips();
+        renderCloset();
+      };
+      row.appendChild(chip);
+    });
+  }
+
   function renderChips(){
     const row = modal.querySelector('#chipRow');
     row.innerHTML = '';
@@ -930,7 +967,7 @@ function openBulkModal(){
     });
   }
 
-  renderThumbs(); renderCatChips(); renderChips();
+  renderThumbs(); renderCatChips(); renderColorChips(); renderChips();
 
   modal.querySelector('#bulkModalRotL').onclick = async () => {
     await rotateItems(ids, -90); renderThumbs(); renderCloset();
@@ -980,6 +1017,8 @@ function openItemModal(id){
     </div>
     <div class="field-label">Category</div>
     <div class="chip-row" id="catRow"></div>
+    <div class="field-label">Color</div>
+    <div class="chip-row" id="colorRow"></div>
     <div class="field-label">Labels — tap as many as apply</div>
     <div class="chip-row" id="chipRow"></div>
     <div class="add-tag">
@@ -996,6 +1035,7 @@ function openItemModal(id){
   bg.onclick = (e) => { if(e.target===bg) { closeModal(); render(); } };
 
   renderCatChips();
+  renderColorChips();
   renderChips();
 
   function renderCatChips(){
@@ -1009,6 +1049,24 @@ function openItemModal(id){
         await saveItem(item);
         renderCatChips();
         renderCatTabs(); renderCloset();
+      };
+      row.appendChild(chip);
+    });
+  }
+
+  function renderColorChips(){
+    const row = modal.querySelector('#colorRow');
+    row.innerHTML = '';
+    COLORS.forEach(color=>{
+      const chip = el('button','chip color-chip'+(item.color===color.name?' on':''));
+      const dot = el('span','color-dot');
+      dot.style.backgroundColor = color.hex;
+      chip.append(dot, document.createTextNode(color.name));
+      chip.onclick = async () => {
+        item.color = item.color === color.name ? null : color.name;
+        await saveItem(item);
+        renderColorChips();
+        renderCloset();
       };
       row.appendChild(chip);
     });
