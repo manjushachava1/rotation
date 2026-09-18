@@ -313,7 +313,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const DEFAULT_TAGS = ["night out","work","casual","layering","sleeveless","cropped","solid","stripes","patterned","denim"];
+const DEFAULT_TAGS = ["night out","work","casual","layering","cropped","solid","stripes","patterned","denim"];
 const DEFAULT_COLORS = [
   {name:"Black", hex:"#211C16"}, {name:"White", hex:"#FBF9F3"}, {name:"Gray", hex:"#8B8985"},
   {name:"Beige", hex:"#D8C3A5"}, {name:"Brown", hex:"#795548"}, {name:"Navy", hex:"#25344D"},
@@ -324,6 +324,7 @@ const DEFAULT_COLORS = [
 ];
 let COLORS = DEFAULT_COLORS.map(color=>({...color}));
 const COLOR_LABELS = new Set([...COLORS.map(color=>color.name.toLowerCase()), "grey"]);
+const RESERVED_LABELS = new Set(["sleeveless"]);
 const DEFAULT_CATEGORIES = ["Dress", "Shirt","Sweater","T-Shirt","Crewneck","Jeans","Trousers","Shorts","Button-Up", "Sleeveless"];
 let CATEGORIES = DEFAULT_CATEGORIES.slice();
 const CATEGORY_PLURALS = {"Dress":"Dresses", "Shirt":"Shirts","Sweater":"Sweaters","T-Shirt":"T-Shirts","Crewneck":"Crewnecks","Jeans":"Jeans","Trousers":"Trousers","Shorts":"Shorts","Button-Up":"Button-Ups", "Sleeveless":"Sleeveless"};
@@ -462,18 +463,24 @@ async function loadAll(){
 
   // categories from the old list (Top/Bottom/Dress/...) are kept on the item but
   // show up under "Needs a category" until they are re-sorted
-  let removedColorLabels = false;
+  let cleanedMetadata = false;
   for(const item of items){
-    const cleanTags = (item.tags || []).filter(tag=>!isColorLabel(tag));
+    const cleanTags = (item.tags || []).filter(tag=>!isColorLabel(tag) && !RESERVED_LABELS.has(String(tag).trim().toLowerCase()));
     if(cleanTags.length !== (item.tags || []).length){
       item.tags = cleanTags;
       await saveItem(item);
-      removedColorLabels = true;
+      cleanedMetadata = true;
     }else if(!item.tags){
       item.tags = [];
     }
+    if(!Array.isArray(item.colors)){
+      item.colors = item.color ? [item.color] : [];
+      delete item.color;
+      await saveItem(item);
+      cleanedMetadata = true;
+    }
   }
-  if(removedColorLabels) await saveItemsIndex();
+  if(cleanedMetadata) await saveItemsIndex();
 
   try{
     const oIdxRaw = await dbGet('outfits:index');
@@ -489,7 +496,7 @@ async function loadAll(){
     const tRaw = await dbGet('tags:index');
     tags = tRaw ? JSON.parse(tRaw) : DEFAULT_TAGS.slice();
   }catch(e){ tags = DEFAULT_TAGS.slice(); }
-  const cleanTags = tags.filter(tag=>!isColorLabel(tag));
+  const cleanTags = tags.filter(tag=>!isColorLabel(tag) && !RESERVED_LABELS.has(String(tag).trim().toLowerCase()));
   if(cleanTags.length !== tags.length){
     tags = cleanTags;
     await saveTags();
@@ -756,6 +763,7 @@ function renderRail(){
     const val = input.value.trim();
     if(!val) return;
     if(isColorLabel(val)){ showToast('Choose colors in the Color section'); input.value=''; return; }
+    if(RESERVED_LABELS.has(val.toLowerCase())){ showToast('That belongs in the Category section'); input.value=''; return; }
     if(!tags.includes(val)){ tags.push(val); await saveTags(); }
     input.value='';
     render();
@@ -1058,15 +1066,17 @@ function openBulkModal(){
     row.innerHTML = '';
     const pieces = chosen();
     COLORS.forEach(color=>{
-      const all = pieces.length>0 && pieces.every(p=>p.color===color.name);
-      const some = pieces.some(p=>p.color===color.name);
+      const all = pieces.length>0 && pieces.every(p=>(p.colors||[]).includes(color.name));
+      const some = pieces.some(p=>(p.colors||[]).includes(color.name));
       const chip = el('button','chip color-chip'+(all?' on':(some?' partial':'')));
       const dot = el('span','color-dot');
       dot.style.backgroundColor = color.hex;
       chip.append(dot, document.createTextNode(color.name));
       chip.onclick = async () => {
         for(const p of pieces){
-          p.color = all ? null : color.name;
+          p.colors = p.colors || [];
+          if(all) p.colors = p.colors.filter(value=>value!==color.name);
+          else if(!p.colors.includes(color.name)) p.colors.push(color.name);
           await saveItem(p);
         }
         renderColorChips();
@@ -1114,6 +1124,7 @@ function openBulkModal(){
     const val = input.value.trim();
     if(!val) return;
     if(isColorLabel(val)){ showToast('Choose colors in the Color section'); input.value=''; return; }
+    if(RESERVED_LABELS.has(val.toLowerCase())){ showToast('That belongs in the Category section'); input.value=''; return; }
     if(!tags.includes(val)){ tags.push(val); await saveTags(); }
     for(const p of chosen()){
       p.tags = p.tags || [];
@@ -1217,12 +1228,14 @@ function openItemModal(id){
     const row = modal.querySelector('#colorRow');
     row.innerHTML = '';
     COLORS.forEach(color=>{
-      const chip = el('button','chip color-chip'+(item.color===color.name?' on':''));
+      const chip = el('button','chip color-chip'+((item.colors||[]).includes(color.name)?' on':''));
       const dot = el('span','color-dot');
       dot.style.backgroundColor = color.hex;
       chip.append(dot, document.createTextNode(color.name));
       chip.onclick = async () => {
-        item.color = item.color === color.name ? null : color.name;
+        item.colors = item.colors || [];
+        if(item.colors.includes(color.name)) item.colors = item.colors.filter(value=>value!==color.name);
+        else item.colors.push(color.name);
         await saveItem(item);
         renderColorChips();
         renderCloset();
@@ -1265,6 +1278,7 @@ function openItemModal(id){
     const val = input.value.trim();
     if(!val) return;
     if(isColorLabel(val)){ showToast('Choose colors in the Color section'); input.value=''; return; }
+    if(RESERVED_LABELS.has(val.toLowerCase())){ showToast('That belongs in the Category section'); input.value=''; return; }
     if(!tags.includes(val)){ tags.push(val); await saveTags(); }
     item.tags = item.tags || [];
     if(!item.tags.includes(val)){ item.tags.push(val); await saveItem(item); }
